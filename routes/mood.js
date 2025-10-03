@@ -47,6 +47,9 @@ const verifyToken = async (req, res, next) => {
 router.post('/log', verifyToken, async (req, res) => {
   try {
     const db = getFirestore();
+    if (!db) {
+      return res.status(503).json({ error: 'Database not available. Please check Firebase configuration.' });
+    }
     
     const { mood, note, energy, stress, sleep } = req.body;
 
@@ -121,6 +124,10 @@ router.post('/log', verifyToken, async (req, res) => {
 router.get('/entries', verifyToken, async (req, res) => {
   try {
     const db = getFirestore();
+    if (!db) {
+      return res.status(503).json({ error: 'Database not available. Please check Firebase configuration.' });
+    }
+
     const { limit = 30, startDate, endDate } = req.query;
     
     let query = db
@@ -155,6 +162,10 @@ router.get('/entries', verifyToken, async (req, res) => {
 router.get('/insights', verifyToken, async (req, res) => {
   try {
     const db = getFirestore();
+    if (!db) {
+      return res.status(503).json({ error: 'Database not available. Please check Firebase configuration.' });
+    }
+
     const { days = 7 } = req.query;
     
     // Calculate date range
@@ -264,6 +275,10 @@ router.get('/insights', verifyToken, async (req, res) => {
 router.get('/today', verifyToken, async (req, res) => {
   try {
     const db = getFirestore();
+    if (!db) {
+      return res.status(503).json({ error: 'Database not available. Please check Firebase configuration.' });
+    }
+
     const today = new Date().toISOString().split('T')[0];
     
     const todayQuery = await db
