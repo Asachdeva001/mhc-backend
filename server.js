@@ -28,6 +28,7 @@ const moodRoutes = require('./routes/mood');
 const activityRoutes = require('./routes/activities');
 const journalRoutes = require('./routes/journal');
 const userRoutes = require('./routes/user');
+const postRoutes = require('./routes/post');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/generate', generateRoutes);
@@ -35,6 +36,7 @@ app.use('/api/mood', moodRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/journal', journalRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/posts', postRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -63,6 +65,7 @@ app.listen(PORT, () => {
   console.log(`😊 Mood endpoints: http://localhost:${PORT}/api/mood/*`);
   console.log(`📝 Journal endpoints: http://localhost:${PORT}/api/journal/*`);
   console.log(`👤 User endpoints: http://localhost:${PORT}/api/user/*`);
+  console.log(`Community endpoints: http://localhost:${PORT}/api/posts/*`);
 });
 
 module.exports = app;
