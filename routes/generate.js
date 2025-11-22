@@ -347,10 +347,10 @@ router.get('/conversations', verifyToken, async (req, res) => {
 
     const { limit = 10, sessionId } = req.query;
     
+    // Simplified query without orderBy to avoid index requirement
     let query = db
       .collection('chatConversations')
       .where('userId', '==', req.user.uid)
-      .orderBy('updatedAt', 'desc')
       .limit(parseInt(limit));
 
     if (sessionId) {
@@ -359,10 +359,17 @@ router.get('/conversations', verifyToken, async (req, res) => {
 
     const conversations = await query.get();
     
-    const conversationList = conversations.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Sort in JavaScript instead of Firestore
+    const conversationList = conversations.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .sort((a, b) => {
+        const timeA = a.updatedAt?.toMillis?.() || 0;
+        const timeB = b.updatedAt?.toMillis?.() || 0;
+        return timeB - timeA; // Descending order
+      });
     
     res.json(conversationList);
   } catch (error) {
