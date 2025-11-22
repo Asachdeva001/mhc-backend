@@ -39,175 +39,22 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Get today's wellness activities
+// Get all wellness activities (simplified: no mood/history filtering)
 router.get('/today', verifyToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     
-    // Get user's recent mood data to personalize activities
-    const recentMoodQuery = await db
-      .collection('moodEntries')
-      .where('userId', '==', req.user.uid)
-      .orderBy('date', 'desc')
-      .limit(3)
-      .get();
+    // All available activities (6 remaining after removing 5)
     
-    const recentMoods = recentMoodQuery.docs.map(doc => doc.data());
-    const avgMood = recentMoods.length > 0 
-      ? recentMoods.reduce((sum, entry) => sum + entry.mood, 0) / recentMoods.length 
-      : 5;
-    
-    // Get user's activity history to avoid repetition
-    const activityHistoryQuery = await db
-      .collection('activities')
-      .where('userId', '==', req.user.uid)
-      .where('date', '>=', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-      .get();
-    
-    const recentActivityIds = activityHistoryQuery.docs.map(doc => doc.data().activityId);
-    
-    // Base activities pool
     const allActivities = [
-      // Mindfulness activities
-      {
-        id: 'breathing-exercise',
-        title: '5-Minute Breathing Exercise',
-        description: 'Practice deep breathing to reduce stress and anxiety',
-        duration: '5 minutes',
-        category: 'Mindfulness',
-        difficulty: 'Easy',
-        moodRange: [1, 10] // Suitable for all moods
-      },
-      {
-        id: 'meditation',
-        title: 'Guided Meditation',
-        description: 'Listen to a calming meditation session',
-        duration: '10 minutes',
-        category: 'Mindfulness',
-        difficulty: 'Medium',
-        moodRange: [1, 8] // Better for lower moods
-      },
-      {
-        id: 'body-scan',
-        title: 'Body Scan Meditation',
-        description: 'Progressive relaxation from head to toe',
-        duration: '15 minutes',
-        category: 'Mindfulness',
-        difficulty: 'Medium',
-        moodRange: [1, 7]
-      },
-      
-      // Physical activities
-      {
-        id: 'walk-outside',
-        title: 'Take a Walk Outside',
-        description: 'Get some fresh air and gentle movement',
-        duration: '15 minutes',
-        category: 'Physical',
-        difficulty: 'Easy',
-        moodRange: [3, 10]
-      },
-      {
-        id: 'stretching',
-        title: 'Gentle Stretching',
-        description: 'Release tension with simple stretches',
-        duration: '10 minutes',
-        category: 'Physical',
-        difficulty: 'Easy',
-        moodRange: [1, 10]
-      },
-      {
-        id: 'dance-break',
-        title: 'Dance Break',
-        description: 'Put on your favorite song and move your body',
-        duration: '5 minutes',
-        category: 'Physical',
-        difficulty: 'Easy',
-        moodRange: [4, 10]
-      },
-      
-      // Reflection activities
-      {
-        id: 'gratitude-journal',
-        title: 'Gratitude Journaling',
-        description: 'Write down three things you\'re grateful for today',
-        duration: '10 minutes',
-        category: 'Reflection',
-        difficulty: 'Easy',
-        moodRange: [1, 10]
-      },
-      {
-        id: 'mood-reflection',
-        title: 'Mood Reflection',
-        description: 'Reflect on what influenced your mood today',
-        duration: '8 minutes',
-        category: 'Reflection',
-        difficulty: 'Easy',
-        moodRange: [1, 8]
-      },
-      {
-        id: 'future-self',
-        title: 'Future Self Visualization',
-        description: 'Imagine your best self and what they would do',
-        duration: '12 minutes',
-        category: 'Reflection',
-        difficulty: 'Medium',
-        moodRange: [3, 10]
-      },
-      
-      // Creative activities
-      {
-        id: 'doodle',
-        title: 'Free-form Doodling',
-        description: 'Let your creativity flow with simple drawing',
-        duration: '10 minutes',
-        category: 'Creative',
-        difficulty: 'Easy',
-        moodRange: [2, 10]
-      },
-      {
-        id: 'music-listening',
-        title: 'Music Therapy',
-        description: 'Listen to music that matches or improves your mood',
-        duration: '15 minutes',
-        category: 'Creative',
-        difficulty: 'Easy',
-        moodRange: [1, 10]
-      },
-      
-      // Social activities
-      {
-        id: 'reach-out',
-        title: 'Reach Out to Someone',
-        description: 'Send a message to a friend or family member',
-        duration: '5 minutes',
-        category: 'Social',
-        difficulty: 'Easy',
-        moodRange: [1, 10]
-      },
-      {
-        id: 'compliment-self',
-        title: 'Self-Compassion Practice',
-        description: 'Write yourself a kind and encouraging message',
-        duration: '8 minutes',
-        category: 'Social',
-        difficulty: 'Easy',
-        moodRange: [1, 8]
-      }
+      { id: 'breathing-exercise', title: '5-Minute Breathing Exercise', description: 'Practice deep breathing to reduce stress and anxiety', category: 'Mindfulness', difficulty: 'Easy' },
+      { id: 'meditation', title: 'Guided Meditation', description: 'Listen to a calming meditation session', category: 'Mindfulness', difficulty: 'Medium' },
+      { id: 'doodle', title: 'Free-form Doodling', description: 'Let your creativity flow with simple drawing', category: 'Creative', difficulty: 'Easy' },
+      { id: 'music-listening', title: 'Music Therapy', description: 'Listen to music that matches or improves your mood', category: 'Creative', difficulty: 'Easy' },
+      { id: 'stretching', title: 'Gentle Stretching', description: 'Release tension with simple stretches', category: 'Physical', difficulty: 'Easy' },
+      { id: 'dance-break', title: 'Dance Break', description: 'Put on your favorite song and move your body', category: 'Physical', difficulty: 'Easy' }
     ];
     
-    // Filter activities based on mood and recent activity
-    const suitableActivities = allActivities.filter(activity => {
-      const isMoodSuitable = avgMood >= activity.moodRange[0] && avgMood <= activity.moodRange[1];
-      const notRecentlyDone = !recentActivityIds.includes(activity.id);
-      return isMoodSuitable && notRecentlyDone;
-    });
-    
-    // If no suitable activities, fall back to basic ones
-    const activities = suitableActivities.length > 0 
-      ? suitableActivities.slice(0, 4) // Select up to 4 activities
-      : allActivities.filter(activity => activity.difficulty === 'Easy').slice(0, 4);
-
     // Check which activities were completed today
     const todayActivities = await db
       .collection('activities')
@@ -217,19 +64,83 @@ router.get('/today', verifyToken, async (req, res) => {
 
     const completedActivityIds = todayActivities.docs.map(doc => doc.data().activityId);
     
-    // Mark completed activities and remove moodRange from response
-    const activitiesWithStatus = activities.map(activity => {
-      const { moodRange, ...activityData } = activity;
-      return {
-        ...activityData,
-        completed: completedActivityIds.includes(activity.id)
-      };
-    });
+    // Mark completed activities
+    const activitiesWithStatus = allActivities.map(activity => ({
+      ...activity,
+      completed: completedActivityIds.includes(activity.id)
+    }));
 
     res.json(activitiesWithStatus);
   } catch (error) {
     console.error('Error fetching activities:', error);
     res.status(500).json({ error: 'Failed to fetch activities' });
+  }
+});
+
+// Save activity session state (auto-save when activity is paused or ongoing)
+router.post('/session/save', verifyToken, async (req, res) => {
+  try {
+    const { activityId, sessionId, timeRemaining, totalTime, isPaused, timestamp } = req.body;
+    
+    if (!activityId || !sessionId) {
+      return res.status(400).json({ error: 'Activity ID and Session ID are required' });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Upsert: Try to update existing session, create if doesn't exist
+    const sessionKey = `${today}_${activityId}_${sessionId}`;
+    
+    await db.collection('activitySessions').doc(sessionKey).set({
+      userId: req.user.uid,
+      activityId,
+      sessionId,
+      timeRemaining,
+      totalTime,
+      isPaused,
+      date: today,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      savedAtClient: new Date(timestamp),
+    }, { merge: true });
+
+    res.json({ success: true, message: 'Activity session saved' });
+  } catch (error) {
+    console.error('Error saving activity session:', error);
+    res.status(500).json({ error: 'Failed to save activity session' });
+  }
+});
+
+// Retrieve the latest activity session
+router.get('/session/:activityId', verifyToken, async (req, res) => {
+  try {
+    const { activityId } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get the most recent session for this activity today
+    const sessions = await db.collection('activitySessions')
+      .where('userId', '==', req.user.uid)
+      .where('activityId', '==', activityId)
+      .where('date', '==', today)
+      .orderBy('updatedAt', 'desc')
+      .limit(1)
+      .get();
+
+    if (sessions.empty) {
+      return res.json({ exists: false });
+    }
+
+    const sessionData = sessions.docs[0].data();
+    res.json({
+      exists: true,
+      sessionId: sessionData.sessionId,
+      timeRemaining: sessionData.timeRemaining,
+      totalTime: sessionData.totalTime,
+      isPaused: sessionData.isPaused,
+      savedAt: sessionData.updatedAt,
+    });
+  } catch (error) {
+    console.error('Error retrieving activity session:', error);
+    res.status(500).json({ error: 'Failed to retrieve activity session' });
   }
 });
 
@@ -252,6 +163,19 @@ router.post('/complete', verifyToken, async (req, res) => {
       notes: notes || '',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
+
+    // Clean up the session record for this activity
+    const sessionsSnapshot = await db.collection('activitySessions')
+      .where('userId', '==', req.user.uid)
+      .where('activityId', '==', activityId)
+      .where('date', '==', today)
+      .get();
+
+    const batch = db.batch();
+    sessionsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
 
     res.json({ message: 'Activity marked as completed' });
   } catch (error) {
