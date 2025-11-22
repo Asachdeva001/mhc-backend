@@ -1,0 +1,113 @@
+{
+  "routes": {
+    "activities": {
+      "path": "/activities",
+      "description": "Wellness activities page with breathing exercises, meditation, journaling, and more"
+    },
+    "dashboard": {
+      "path": "/dashboard",
+      "description": "User dashboard showing mood tracking, insights, and trends"
+    },
+    "chat": {
+      "path": "/chat",
+      "description": "AI wellness companion chat interface"
+    },
+    "home": {
+      "path": "/",
+      "description": "Home page"
+    }
+  },
+  "activities": [
+    {
+      "id": "breathing-exercise",
+      "title": "5-Minute Breathing Exercise",
+      "description": "Practice deep breathing to reduce stress and anxiety",
+      "duration": "5 minutes",
+      "category": "Mindfulness"
+    },
+    {
+      "id": "meditation",
+      "title": "Guided Meditation",
+      "description": "Listen to a calming meditation session",
+      "duration": "10 minutes",
+      "category": "Mindfulness"
+    },
+    {
+      "id": "body-scan",
+      "title": "Body Scan Meditation",
+      "description": "Progressive relaxation from head to toe",
+      "duration": "15 minutes",
+      "category": "Mindfulness"
+    },
+    {
+      "id": "walk-outside",
+      "title": "Take a Walk Outside",
+      "description": "Get some fresh air and gentle movement",
+      "duration": "15 minutes",
+      "category": "Physical"
+    },
+    {
+      "id": "stretching",
+      "title": "Gentle Stretching",
+      "description": "Release tension with simple stretches",
+      "duration": "10 minutes",
+      "category": "Physical"
+    },
+    {
+      "id": "dance-break",
+      "title": "Dance Break",
+      "description": "Put on your favorite song and move your body",
+      "duration": "5 minutes",
+      "category": "Physical"
+    },
+    {
+      "id": "gratitude-journal",
+      "title": "Gratitude Journaling",
+      "description": "Write down three things you're grateful for today",
+      "duration": "10 minutes",
+      "category": "Reflection"
+    },
+    {
+      "id": "mood-reflection",
+      "title": "Mood Reflection",
+      "description": "Reflect on what influenced your mood today",
+      "duration": "8 minutes",
+      "category": "Reflection"
+    },
+    {
+      "id": "future-self",
+      "title": "Future Self Visualization",
+      "description": "Imagine your best self and what they would do",
+      "duration": "12 minutes",
+      "category": "Reflection"
+    },
+    {
+      "id": "doodle",
+      "title": "Free-form Doodling",
+      "description": "Let your creativity flow with simple drawing",
+      "duration": "10 minutes",
+      "category": "Creative"
+    },
+    {
+      "id": "music-listening",
+      "title": "Music Therapy",
+      "description": "Listen to music that matches or improves your mood",
+      "duration": "15 minutes",
+      "category": "Creative"
+    },
+    {
+      "id": "reach-out",
+      "title": "Reach Out to Someone",
+      "description": "Send a message to a friend or family member",
+      "duration": "5 minutes",
+      "category": "Social"
+    },
+    {
+      "id": "compliment-self",
+      "title": "Self-Compassion Practice",
+      "description": "Write yourself a kind and encouraging message",
+      "duration": "8 minutes",
+      "category": "Social"
+    }
+  ]
+}

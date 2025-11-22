@@ -3,75 +3,97 @@ const router = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { logConversation, getFirestore } = require('../lib/firebase');
 const { initializeFirebase } = require('../lib/firebase');
+const path = require('path');
+const fs = require('fs');
 
 const admin = initializeFirebase();
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Crisis detection keywords
-const crisisKeywords = [
-  'suicide', 'kill myself', 'end my life', 'not worth living',
-  'self harm', 'cut myself', 'hurt myself', 'want to die',
-  'better off dead', 'no point living', 'give up', 'hopeless',
-  'cant go on', 'end it all', 'take my life', 'self-destruct'
-];
+// Load app routes configuration
+const appRoutesPath = path.join(__dirname, '../config/appRoutes.json');
+const appRoutes = JSON.parse(fs.readFileSync(appRoutesPath, 'utf8'));
 
-// Detect crisis
+// Crisis detection with word boundaries to avoid false positives
 const detectCrisis = (message) => {
-  const lowerMessage = message.toLowerCase();
-  return crisisKeywords.some(keyword => lowerMessage.includes(keyword));
+  // Use word boundaries (\b) to match complete words/phrases only
+  const crisisPattern = /\b(suicide|kill myself|end my life|not worth living|self harm|self-harm|cut myself|hurt myself|want to die|better off dead|no point living|give up on life|end it all|take my life|self-destruct|can'?t go on|no reason to live|hopeless about life)\b/i;
+  
+  return crisisPattern.test(message);
 };
 
 // Generate empathetic response
-const generateResponse = async (messages) => {
+const generateResponse = async (messages, userContext = { name: 'Friend', recentMoods: 'No recent data', wellnessSummary: '' }) => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const userMessage = messages[messages.length - 1].content;
 
     // PART 1: Core Identity & Operating Instructions
-    const part1 = `PART 1: YOUR CORE IDENTITY & OPERATING INSTRUCTIONS (STATIC)
+    const part1 = `PART 1: YOUR CORE IDENTITY & OPERATING INSTRUCTIONS
 
-(This section is your permanent, unchangeable persona and rulebook. Always adhere to these principles.)
+ROLE: You are an Empathetic AI Wellness Companion.
 
-1. Role & Persona:
+DEEP MEMORY (Long-term context about this user):
+${userContext.wellnessSummary || 'No long-term history available yet.'}
 
-You are an Empathetic AI Wellness Guide. Your persona is that of a compassionate, wise, and non-judgmental psychologist. You are a master of active listening, and your primary function is to make the user feel deeply heard, understood, and validated.
+USER CONTEXT (CRITICAL):
+Name: ${userContext.name}
+Recent Mood History:
+${userContext.recentMoods}
 
-2. Primary Objective:
+INSTRUCTIONS:
 
-To provide a safe and supportive conversational space for users of all ages to explore their feelings. Your goal is for the user to leave the conversation feeling heard, validated, and a little bit lighter—not because you "fixed" them, but because you listened.
+1. **CHECK CONTEXT FIRST:** Look at the "Recent Mood History" above.
+   - IF the user logged a specific mood or note (like a "fight", "anxiety", or low score) in the last 24 hours, **YOU MUST reference it** in your very first sentence.
+   - Example: "I saw you noted a fight with your mom earlier. How are you feeling about that now?"
+   - Do NOT give a generic "Hello" if there is specific context to address.
+   - IF this is the first conversation and there IS mood context, start with: "Hi ${userContext.name}, I saw you logged [specific context]. How are you feeling about that now?"
+   - IF this is the first conversation and there is NO mood context, start with: "Hi ${userContext.name}, how are you feeling today?"
+   - In follow-up messages, use warm terms like "friend" or "buddy" instead of repeating their name.
 
-3. Core Interaction Protocol:
+2. **Internal Analysis (SILENT):** Before responding, internally analyze:
+   - What core emotion(s) are they expressing? (e.g., sadness, anxiety, frustration, hopelessness)
+   - Are there cognitive distortions? (all-or-nothing thinking, catastrophizing, overgeneralization, personalization)
+   - What do they truly need? (validation, perspective, action, just to be heard)
+   (This analysis is internal only - do NOT include it in your response)
 
-Analyze and Acknowledge First: Before writing anything, deeply analyze the user's message in PART 3. Your first sentence must be a unique, personal, and empathetic acknowledgment of their specific situation.
+3. **Validation First:** Validate their feelings before offering help. Your first sentence must be a unique, personal, and empathetic acknowledgment of their specific situation.
 
-Bad Example: "I understand you are feeling sad."
+4. **Listen Actively (Default Mode):** Reflect and validate feelings. Ask gentle, open-ended questions to help them explore their thoughts (e.g., "What was that experience like for you?" or "What's the hardest part about this for you?").
 
-Good Example: "It sounds incredibly difficult to be carrying the weight of that disappointment, especially when you were hoping for a different outcome."
+5. **Guidance - Conditional Only:** Do NOT offer exercises or solutions by default. Only suggest wellness activities if the user seems truly stuck, asks for help, or you assess it would be genuinely beneficial. Frame it as a gentle invitation, not a command.
 
-Listen Actively (Default Mode): Your primary tool is listening. Reflect and validate the user's feelings. Ask gentle, open-ended questions to help them explore their thoughts further if it feels appropriate (e.g., "What was that experience like for you?" or "What's the hardest part about this for you?").
+6. **Available Wellness Activities on Our Platform** (Suggest when user asks for activities, relaxation techniques, or something to do):
+   
+   Activities available on our platform:
+   ${appRoutes.activities.map(a => `- ${a.title}: ${a.description} (${a.duration})`).join('\n   ')}
+   
+   **IMPORTANT - When suggesting activities:**
+   - Frame suggestions warmly and invitingly
+   - DO NOT include links in your response - a button will automatically appear for users to explore activities
+   - Simply mention the activities naturally in conversation
+   
+   Example responses:
+   - "If you feel up to it, a simple breathing exercise can sometimes help quiet the noise. We have a 5-minute guided breathing exercise on our platform that might help."
+   - "It sounds like you could use some relaxation. We have several activities that might help - guided meditation, gentle stretching, or gratitude journaling."
+   - "When you're ready, exploring some wellness activities could be helpful. We have breathing exercises, meditation, and creative activities designed to support you."
 
-Offer Guidance Conditionally & Gently: Do NOT offer exercises or solutions by default. Only suggest a small, practical step if the user seems truly stuck, asks for help, or you assess it would be genuinely beneficial. Frame it as a gentle invitation, not a command. (e.g., "If you feel up to it, a simple grounding exercise can sometimes help quiet the noise. Would you be open to trying one?").
+7. **Other Platform Features** (Mention only if relevant to user's needs):
+   - Dashboard: "You can view your mood trends and insights on your [Dashboard](${appRoutes.routes.dashboard.path})"
+   - Use these links when user asks about tracking their progress or viewing their mood history
 
-4. CRITICAL SAFETY PROTOCOL:
+8. **Tone:** Warm, professional, and supportive. Your tone must always be calm, patient, encouraging, and deeply empathetic.
 
-This protocol overrides all other instructions. If the user's message in PART 3 contains any indication of self-harm, abuse, immediate danger, or severe mental crisis, you must immediately and exclusively do the following:
+9. **Limitations:** You are an AI guide, not a licensed medical professional. You must NEVER provide medical advice, diagnoses, or clinical therapy.
 
-Respond with gentle, serious concern (e.g., "Thank you for trusting me with this. I'm genuinely concerned about what you're going through, and your safety is the most important thing right now.").
-
-Provide a relevant national crisis hotline (e.g., "Help is available, and you don't have to go through this alone. You can connect with someone who can support you right now by calling or texting 988 in the US & Canada, or 111 in the UK.").
-
-Gently encourage them to speak with a trusted person, framing it as an act of strength (e.g., "Sometimes, the strongest thing we can do is reach out. Is there a family member, an elder, or a friend you can talk to about how you're feeling?").
-
-Do NOT offer any other exercises or plans in this situation.
-
-5. Limitations & Tone:
-
-Limitation: You are an AI guide, not a licensed medical professional. You must NEVER provide medical advice, diagnoses, or clinical therapy.
-
-Tone: Your tone must always be calm, patient, encouraging, and deeply empathetic.`;
+SAFETY PROTOCOL (OVERRIDES ALL):
+If the user expresses self-harm, suicide ideation, abuse, immediate danger, or severe mental crisis, ignore style guidelines and:
+- Respond with gentle, serious concern: "Thank you for trusting me with this. I'm genuinely concerned about what you're going through, and your safety is the most important thing right now."
+- Provide crisis resources immediately: "Help is available, and you don't have to go through this alone. You can connect with someone who can support you right now by calling or texting 988 in the US & Canada, or 111 in the UK."
+- Gently encourage them to speak with a trusted person: "Sometimes, the strongest thing we can do is reach out. Is there a family member, an elder, or a friend you can talk to about how you're feeling?"
+- Do NOT offer any other exercises or plans in this situation.`;
 
     // PART 2: Build conversation history
     let part2 = `PART 2: CONTEXT - PREVIOUS CONVERSATION HISTORY
@@ -147,22 +169,57 @@ router.post('/', async (req, res) => {
       return res.json(crisisResponse);
     }
 
+    // Fetch user context (name + recent mood data)
+    const userContext = await fetchUserContext(userId);
+
+    // DEBUG LOGS - Check what context the AI is seeing
+    console.log("--- DEBUG CONTEXT ---");
+    console.log("User ID:", userId);
+    console.log("Context Data:", JSON.stringify(userContext, null, 2));
+    console.log("---------------------");
+
     // Combine the history with the new user message
     const fullConversation = [
       ...messages,
       { role: 'user', content: message }
     ];
 
-    // Generate AI response using the new 3-part prompt structure
-    const aiResponse = await generateResponse(fullConversation);
+    // Generate AI response with user context
+    const aiResponse = await generateResponse(fullConversation, userContext);
+
+    // Check if response mentions activities/suggestions to add button
+    const activityKeywords = ['activit', 'exercise', 'breathing', 'meditation', 'relaxation', 'practice', 'try', 'suggest', 'help you'];
+    const mentionsActivities = activityKeywords.some(keyword => 
+      aiResponse.toLowerCase().includes(keyword)
+    );
 
     const response = {
       reply: aiResponse,
       crisis: false,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Add button if activities are mentioned
+      buttons: mentionsActivities ? [{
+        label: 'Explore Activities',
+        url: appRoutes.routes.activities.path,
+        icon: '🎯'
+      }] : undefined
     };
 
     await logConversation(userId, message, aiResponse, false);
+    
+    // Update long-term wellness summary in the background (non-blocking)
+    // This keeps the summary fresh without slowing down the chat response
+    if (userId && userId !== 'anonymous') {
+      const conversationWithResponse = [
+        ...fullConversation,
+        { role: 'assistant', content: aiResponse }
+      ];
+      
+      // Fire and forget - don't await
+      updateUserSummary(userId, conversationWithResponse, userContext.wellnessSummary)
+        .catch(err => console.error('Background summary update failed:', err));
+    }
+    
     res.json(response);
   } catch (error) {
     console.error('Generate route error:', error);
@@ -290,10 +347,10 @@ router.get('/conversations', verifyToken, async (req, res) => {
 
     const { limit = 10, sessionId } = req.query;
     
+    // Simplified query without orderBy to avoid index requirement
     let query = db
       .collection('chatConversations')
       .where('userId', '==', req.user.uid)
-      .orderBy('updatedAt', 'desc')
       .limit(parseInt(limit));
 
     if (sessionId) {
@@ -302,10 +359,17 @@ router.get('/conversations', verifyToken, async (req, res) => {
 
     const conversations = await query.get();
     
-    const conversationList = conversations.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Sort in JavaScript instead of Firestore
+    const conversationList = conversations.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .sort((a, b) => {
+        const timeA = a.updatedAt?.toMillis?.() || 0;
+        const timeB = b.updatedAt?.toMillis?.() || 0;
+        return timeB - timeA; // Descending order
+      });
     
     res.json(conversationList);
   } catch (error) {
@@ -374,6 +438,130 @@ router.delete('/conversation/:sessionId', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Fetch user context (name + recent mood summaries + long-term memory) - WITH DEEP MEMORY
+const fetchUserContext = async (userId) => {
+  if (!userId || userId === 'anonymous') return { name: 'Friend', recentMoods: '', wellnessSummary: '' };
+  
+  try {
+    const db = getFirestore();
+    if (!db) {
+      return { name: 'Friend', recentMoods: 'No recent data', wellnessSummary: '' };
+    }
+
+    // 1. Get Name (first name only) and Wellness Summary
+    const userDoc = await db.collection('users').doc(userId).get();
+    let name = 'Friend';
+    let wellnessSummary = '';
+    
+    if (userDoc && userDoc.exists && userDoc.data()) {
+      const userData = userDoc.data();
+      
+      if (userData.name) {
+        const fullName = userData.name;
+        name = fullName.split(' ')[0];
+      }
+      
+      // Retrieve long-term wellness summary
+      wellnessSummary = userData.wellnessSummary || '';
+    }
+
+    // 2. Get Moods (Simplified query to avoid Index issues)
+    const moodQuery = await db.collection('moodEntries')
+      .where('userId', '==', userId)
+      .limit(5)
+      .get();
+    
+    if (moodQuery.empty) {
+      return { name, recentMoods: 'No recent mood logs.', wellnessSummary };
+    }
+
+    // 3. Sort in JS to be safe (prevents Firestore index errors)
+    const sortedDocs = moodQuery.docs
+      .map(d => d.data())
+      .sort((a, b) => {
+        const timeA = a.timestamp || a.date || '';
+        const timeB = b.timestamp || b.date || '';
+        return timeB.localeCompare(timeA); // Descending
+      })
+      .slice(0, 3); // Take top 3
+
+    // 4. Format string (preserve note content with quotes for clarity)
+    const recentMoods = sortedDocs.map(data => {
+      return `- Date: ${data.date}, Mood: ${data.mood}/10, Note: "${data.note || ''}"`;
+    }).join('\n');
+
+    return { name, recentMoods, wellnessSummary };
+  } catch (error) {
+    console.error('Context fetch error:', error);
+    return { name: 'Friend', recentMoods: 'Error fetching data.', wellnessSummary: '' };
+  }
+};
+
+// Update user's long-term wellness summary using Gemini
+const updateUserSummary = async (userId, newMessages, currentSummary) => {
+  if (!userId || userId === 'anonymous') return;
+  
+  try {
+    const db = getFirestore();
+    if (!db) return;
+
+    // Extract recent conversation for summarization (last 4 messages)
+    const recentConvo = newMessages.slice(-4).map(msg => {
+      const role = msg.role === 'user' ? 'User' : 'AI';
+      return `${role}: ${msg.content}`;
+    }).join('\n');
+
+    // Use Gemini to condense into a concise summary
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    
+    const summaryPrompt = `You are a mental health summary assistant. Your job is to maintain a concise, bullet-point summary of a user's mental state and history.
+
+CURRENT SUMMARY:
+${currentSummary || 'No previous summary.'}
+
+NEW CONVERSATION EXCERPT:
+${recentConvo}
+
+TASK:
+Update the summary by:
+1. Keeping important long-term patterns (recurring themes, progress, setbacks)
+2. Adding significant new insights from the conversation above
+3. Removing outdated or less important details
+4. Keeping it under 150 words, formatted as bullet points
+
+Focus on:
+- Recurring emotional patterns or triggers
+- Progress or changes in mental state
+- Important life context (relationships, work, family)
+- Coping strategies that work/don't work
+- Any red flags or concerns
+
+Return ONLY the updated bullet-point summary, nothing else.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: summaryPrompt }] }],
+      generationConfig: {
+        temperature: 0.5,
+        topK: 20,
+        topP: 0.9,
+        maxOutputTokens: 300,
+      },
+    });
+
+    const updatedSummary = result.response.text();
+
+    // Save to Firestore
+    await db.collection('users').doc(userId).set({
+      wellnessSummary: updatedSummary,
+      lastSummaryUpdate: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    console.log(`✅ Updated wellness summary for user: ${userId}`);
+  } catch (error) {
+    console.error('Error updating user summary:', error);
+  }
+};
 
 module.exports = router;
 
