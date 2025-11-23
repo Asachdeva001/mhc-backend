@@ -140,12 +140,19 @@ router.put('/profile', verifyToken, async (req, res) => {
 // PUT /password - Update user password (Firebase Auth)
 router.put('/password', verifyToken, async (req, res) => {
   try {
-    const { newPassword } = req.body;
+    const { currentPassword, newPassword } = req.body;
 
-    // Validation
+    // Validation - require current password
+    if (!currentPassword) {
+      return res.status(400).json({ 
+        error: 'Current password is required',
+        message: 'Please provide your current password to verify your identity'
+      });
+    }
+
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ 
-        error: 'Password must be at least 6 characters long' 
+        error: 'New password must be at least 6 characters long' 
       });
     }
 
@@ -156,15 +163,68 @@ router.put('/password', verifyToken, async (req, res) => {
       });
     }
 
-    // Update password in Firebase Auth
+    // Prevent setting the same password
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ 
+        error: 'New password must be different from current password' 
+      });
+    }
+
+    // Step 1: Verify current password by attempting to sign in with it
     try {
+      const { getAuth } = require('firebase-admin/auth');
+      const auth = getAuth();
+      
+      // Import the Firebase client SDK signInWithEmailAndPassword
+      // Note: We need to verify the current password, but Admin SDK doesn't support this directly
+      // We'll use a workaround by checking if the user can authenticate
+      
+      // Get user's email from Firebase Auth
+      const userRecord = await admin.auth().getUser(req.user.uid);
+      
+      // For security, we'll verify the password using Firebase Auth REST API
+      const axios = require('axios');
+      const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+      
+      if (!FIREBASE_API_KEY) {
+        console.error('FIREBASE_API_KEY not configured');
+        return res.status(500).json({ 
+          error: 'Server configuration error',
+          message: 'Password verification is not properly configured' 
+        });
+      }
+
+      // Verify current password using Firebase Auth REST API
+      try {
+        await axios.post(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+          {
+            email: userRecord.email,
+            password: currentPassword,
+            returnSecureToken: true
+          }
+        );
+      } catch (verifyError) {
+        // Current password is incorrect
+        if (verifyError.response?.data?.error?.message === 'INVALID_PASSWORD' || 
+            verifyError.response?.data?.error?.message === 'INVALID_LOGIN_CREDENTIALS') {
+          return res.status(401).json({ 
+            error: 'Current password is incorrect',
+            message: 'The current password you entered does not match our records'
+          });
+        }
+        throw verifyError;
+      }
+
+      // Step 2: Current password verified, now update to new password
       await admin.auth().updateUser(req.user.uid, {
         password: newPassword,
       });
 
       res.json({
-        message: 'Password updated successfully',
-        notice: 'Please sign in again with your new password',
+        message: 'Password updated successfully! Please sign in again with your new password.',
+        success: true,
+        notice: 'You will be signed out shortly for security'
       });
     } catch (authError) {
       console.error('Firebase Auth password update error:', authError);
@@ -173,14 +233,24 @@ router.put('/password', verifyToken, async (req, res) => {
         return res.status(400).json({ error: 'Password is too weak' });
       }
       
+      if (authError.response?.status === 400) {
+        return res.status(401).json({ 
+          error: 'Current password verification failed',
+          message: 'Please check your current password and try again'
+        });
+      }
+      
       return res.status(500).json({ 
         error: 'Failed to update password',
-        message: authError.message 
+        message: authError.message || 'An unexpected error occurred'
       });
     }
   } catch (error) {
     console.error('Error updating password:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: 'Could not update password. Please try again later.'
+    });
   }
 });
 
