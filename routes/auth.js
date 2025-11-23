@@ -5,6 +5,32 @@ const { initializeFirebase, getFirestore } = require("../lib/firebase");
 const admin = initializeFirebase();
 const db = getFirestore();
 
+// Password validation helper
+const validatePassword = (password) => {
+  const errors = [];
+  
+  if (password.length < 8) {
+    errors.push("Password must be at least 8 characters long");
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push("Password must contain at least one uppercase letter");
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push("Password must contain at least one lowercase letter");
+  }
+  if (!/[0-9]/.test(password)) {
+    errors.push("Password must contain at least one number");
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push("Password must contain at least one special character");
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
 // Middleware: Verify session token
 const verifyToken = async (req, res, next) => {
   try {
@@ -45,6 +71,15 @@ router.post("/signup", async (req, res) => {
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: "Email, password, and name required" });
+    }
+
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ 
+        error: "Password does not meet requirements",
+        details: passwordValidation.errors 
+      });
     }
 
     const userRecord = await admin.auth().createUser({
