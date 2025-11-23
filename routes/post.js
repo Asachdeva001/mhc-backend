@@ -1,8 +1,100 @@
 const express = require('express');
 const router = express.Router();
 const { getFirestore, initializeFirebase } = require('../lib/firebase');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const admin = initializeFirebase();
+
+// Initialize Gemini AI for content moderation
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+/**
+ * AI Content Moderation Function
+ * Checks for sexual, offensive, harmful, or inappropriate content
+ * @param {string} content - The text to moderate
+ * @returns {Promise<Object>} - { safe: boolean, reason: string, flaggedContent: string }
+ */
+const moderateContent = async (content) => {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    const moderationPrompt = `You are a content moderation AI for a mental health support community. Analyze the following text and determine if it contains:
+
+1. Sexual content or explicit material
+2. Offensive language (hate speech, slurs, discrimination)
+3. Harassment or bullying
+4. Spam or promotional content
+5. Graphic violence or gore descriptions
+6. Content that violates community safety guidelines
+
+IMPORTANT NOTES:
+- Mental health discussions about trauma, abuse, depression, anxiety, etc. are ALLOWED and should NOT be flagged
+- Mentions of suicide/self-harm in the context of seeking help are ALLOWED (this is a support community)
+- Medical terminology related to mental health is ALLOWED
+- Expressing negative emotions (anger, sadness, frustration) is ALLOWED
+- Only flag content that is clearly inappropriate, offensive, or harmful to others
+
+TEXT TO MODERATE:
+"${content}"
+
+RESPOND IN THIS EXACT JSON FORMAT (no other text):
+{
+  "safe": true/false,
+  "reason": "brief explanation if not safe, or empty string if safe",
+  "flaggedContent": "the specific problematic phrase/word, or empty string if safe"
+}`;
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: moderationPrompt }] }],
+      generationConfig: {
+        temperature: 0.1, // Low temperature for consistent moderation
+        maxOutputTokens: 200,
+      },
+    });
+
+    const response = await result.response;
+    let responseText = response.text().trim();
+
+    // Remove markdown code blocks if present
+    responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    console.log('🔍 AI Moderation raw response:', responseText);
+
+    // Parse JSON response with error handling
+    let moderationResult;
+    try {
+      moderationResult = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse moderation response:', parseError.message);
+      console.error('Raw response was:', responseText);
+      // Default to safe if we can't parse
+      return {
+        safe: true,
+        reason: '',
+        flaggedContent: '',
+        error: 'Moderation response parsing failed'
+      };
+    }
+
+    console.log('🛡️ Content moderation result:', moderationResult);
+
+    return {
+      safe: moderationResult.safe === true,
+      reason: moderationResult.reason || '',
+      flaggedContent: moderationResult.flaggedContent || ''
+    };
+  } catch (error) {
+    console.error('❌ Content moderation error:', error.message);
+    console.error('Full error:', error);
+    // Default to safe if moderation fails (don't block users due to technical errors)
+    return {
+      safe: true,
+      reason: '',
+      flaggedContent: '',
+      error: 'Moderation service temporarily unavailable'
+    };
+  }
+};
 
 /* -------------------------------
    TOKEN VERIFICATION (same as mood.js)
@@ -107,8 +199,28 @@ router.post('/', verifyToken, async (req, res) => {
     const db = getFirestore();
     const { content, isAnonymous, avatar, tag } = req.body;
 
-    if (!content || content.trim().length === 0) {
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return res.status(400).json({ error: 'Post content required.' });
+    }
+
+    const contentToCheck = content.trim();
+
+    // AI Content Moderation
+    let moderationResult;
+    try {
+      moderationResult = await moderateContent(contentToCheck);
+      
+      if (!moderationResult.safe) {
+        return res.status(400).json({
+          error: 'Content not allowed',
+          reason: moderationResult.reason,
+          flaggedContent: moderationResult.flaggedContent,
+          message: `Your post contains content that violates our community guidelines${moderationResult.flaggedContent ? `: "${moderationResult.flaggedContent}"` : ''}. ${moderationResult.reason}`
+        });
+      }
+    } catch (moderationError) {
+      console.error('⚠️ Moderation failed, allowing post:', moderationError.message);
+      // Allow post to proceed if moderation fails (don't block users due to technical issues)
     }
 
     const timestamp = new Date().toISOString();
@@ -117,7 +229,7 @@ router.post('/', verifyToken, async (req, res) => {
       author: isAnonymous ? 'Anonymous' : req.user.name || 'User',
       isAnonymous: !!isAnonymous,
       avatar: isAnonymous ? null : (avatar || (req.user.name ? req.user.name.split(" ").map(n => n[0]).join("") : "")),
-      content: content.trim(),
+      content: contentToCheck,
       timestamp,
       tag: tag || 'General',
       likes: [], // Changed: array of user IDs who liked the post
@@ -176,6 +288,24 @@ router.post('/:id/comment', verifyToken, async (req, res) => {
 
     if (!replyText || replyText.trim().length === 0) {
       return res.status(400).json({ error: 'Comment cannot be empty.' });
+    }
+
+    // AI Content Moderation for comments (with error handling)
+    let moderationResult;
+    try {
+      moderationResult = await moderateContent(replyText.trim());
+      
+      if (!moderationResult.safe) {
+        return res.status(400).json({
+          error: 'Content not allowed',
+          reason: moderationResult.reason,
+          flaggedContent: moderationResult.flaggedContent,
+          message: `Your comment contains content that violates our community guidelines${moderationResult.flaggedContent ? `: "${moderationResult.flaggedContent}"` : ''}. ${moderationResult.reason}`
+        });
+      }
+    } catch (moderationError) {
+      console.error('⚠️ Comment moderation failed, allowing comment:', moderationError.message);
+      // Allow comment to proceed if moderation fails
     }
 
     const postRef = db.collection('posts').doc(req.params.id);
