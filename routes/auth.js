@@ -5,6 +5,7 @@ const { initializeFirebase, getFirestore } = require("../lib/firebase");
 const admin = initializeFirebase();
 const db = getFirestore();
 
+// hi changes
 // Password validation helper
 const validatePassword = (password) => {
   const errors = [];
