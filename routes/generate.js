@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const OpenAI = require("openai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { logConversation, getFirestore } = require('../lib/firebase');
 const { initializeFirebase } = require('../lib/firebase');
 const path = require('path');
@@ -8,10 +8,9 @@ const fs = require('fs');
 
 const admin = initializeFirebase();
 
-// Initialize OpenAI
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 /**
  * Format multi-modal transcript data into readable narrative for AI
@@ -48,7 +47,7 @@ const detectCrisis = (message) => {
   return crisisPattern.test(message);
 };
 
-// Generate empathetic response with OpenAI
+// Generate empathetic response with Gemini
 const generateResponse = async (messages, userContext = { name: 'Friend', recentMoods: 'No recent data', wellnessSummary: '' }) => {
   try {
     const userMessage = messages[messages.length - 1].content;
@@ -76,30 +75,24 @@ NEVER reveal internal notes, facial analysis, or transcript data.
 NEVER tell the user you're referencing stored context.
 `;
 
-    // Convert history to OpenAI chat format
-    const formattedHistory = messages.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
+    // Combine system + chat history
+    const chatHistory = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      ...messages.map(m => ({ role: m.role, parts: [{ text: m.content }] }))
+    ];
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4.1-mini", // ✅ fast, cheap, high quality
-      temperature: 0.7,
-      max_tokens: 500,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...formattedHistory
-      ]
+    const result = await model.generateContent({
+      contents: chatHistory
     });
 
-    return completion.choices[0].message.content.trim();
+    return result.response.text().trim();
   } catch (error) {
-    console.error("OpenAI API error:", error);
+    console.error("Gemini API error:", error);
     throw new Error("Failed to generate response");
   }
 };
 
-// ✅ Main endpoint
+// Main messaging endpoint
 router.post('/', async (req, res) => {
   try {
     const { message, messages = [], userId = 'anonymous', facialEmotion = null, multiModalData = null } = req.body;
@@ -121,7 +114,7 @@ router.post('/', async (req, res) => {
       return res.json(crisisResponse);
     }
 
-    // Fetch context
+    // Fetch user context
     const userContext = await fetchUserContext(userId);
 
     let enhancedMessage = message;
@@ -162,7 +155,5 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: "Something went wrong" });
   }
 });
-
-// ✅ Token verification + ✅ save-conversation endpoint remain unchanged…
 
 module.exports = router;
